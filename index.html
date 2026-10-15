@@ -1,5 +1,8 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Lunchbox HQ</title>
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<!-- Firebase App & Realtime Database SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>:root{box-sizing:border-box;padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{background:#F2F2F7;color:#0f172a;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:45;background:rgba(255,255,255,.75);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
@@ -12,18 +15,66 @@ input,select{font-size:16px;background:#fff}
 <main id="app" class="max-w-xl mx-auto p-4 pb-24"></main><div id="sh"></div>
 <div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-8 bg-slate-900/90 backdrop-blur text-white text-sm font-medium px-4 py-2.5 rounded-full shadow-lg hidden z-[60]"></div>
 <script>
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyB4gV2ZU2M1-90NGPFJX-u2PHb3A8RSHQA",
+  authDomain: "lunchbox-3df22.firebaseapp.com",
+  databaseURL: "https://lunchbox-3df22-default-rtdb.firebaseio.com",
+  projectId: "lunchbox-3df22",
+  storageBucket: "lunchbox-3df22.firebasestorage.app",
+  messagingSenderId: "410637080104",
+  appId: "1:410637080104:web:880f0a8c4fe5cf0527471d"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
 const CATS=[['main','Main','🍱'],['side','Side','🥒'],['snack','Snack','🍎'],['drink','Drink','🥤']];
 const D=[['main','🌯','Paneer wrap',1],['main','🥪','Veg sandwich',0],['main','🧀','Cheese quesadilla',1],['main','🍚','Veg fried rice',1],['main','🍝','Pasta primavera',1],['main','🫓','Dal paratha roll',1],['main','🥟','Idli & chutney',0],['main','🍛','Veg pulao',0],
 ['side','🥒','Cucumber sticks',0],['side','🥕','Carrot sticks',0],['side','🌽','Corn salad',1],['side','🫓','Hummus & pita',0],['side','🍅','Cherry tomatoes',0],['side','🥣','Curd cup',0],
 ['snack','🍏','Apple slices',0],['snack','🍌','Banana',0],['snack','🍇','Grapes',0],['snack','🌰','Roasted makhana',0],['snack','🥜','Trail mix',0],['snack','🧀','Cheese cubes',0],['snack','🍫','Granola bar',0],
 ['drink','💧','Water',0],['drink','🥛','Milk',0],['drink','🍊','Orange juice',0],['drink','🥥','Coconut water',0],['drink','🥭','Mango lassi',0],['drink','🍶','Buttermilk',0]];
 const WHY=['Out of stock','Too sugary','Had it recently','Needs more veg','Too messy'];
+
 let S;
 try{S=JSON.parse(localStorage.getItem('lhq1'))}catch(e){}
 if(!S)S={p:'Abhi',foods:D.map((d,i)=>({id:'f'+i,cat:d[0],e:d[1],n:d[2],h:d[3]})),out:{},L:{Abhi:{},Sister:{}},low:false,cut:'20:00',tab:'appr',cat:'main'};
+S.names=S.names||{Abhi:'Abhi',Sister:'Sister',Mom:'Mom'};
+
 const E=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-S.names=S.names||{Abhi:'Abhi',Sister:'Sister',Mom:'Mom'};const N=k=>E(S.names[k]||k);
-const save=()=>{try{localStorage.setItem('lhq1',JSON.stringify(S))}catch(e){}};
+const N=k=>E(S.names[k]||k);
+
+// Flag to prevent recursive save loops when updating from Firebase
+let isRemoteUpdate = false;
+
+// Save state to LocalStorage and push live to Firebase
+const save=()=>{
+  try{localStorage.setItem('lhq1',JSON.stringify(S))}catch(e){}
+  if(!isRemoteUpdate && db){
+    db.ref('lunchboxState').set(S);
+  }
+};
+
+// Listen for live updates from Firebase
+db.ref('lunchboxState').on('value', (snapshot) => {
+  const remoteData = snapshot.val();
+  if(remoteData){
+    isRemoteUpdate = true;
+    const currentProfile = S ? S.p : 'Abhi';
+    const currentTab = S ? S.tab : 'appr';
+    const currentCat = S ? S.cat : 'main';
+    S = remoteData;
+    // Preserve local UI active tab/profile state across syncs
+    S.p = currentProfile;
+    S.tab = currentTab;
+    S.cat = currentCat;
+    try{localStorage.setItem('lhq1',JSON.stringify(S))}catch(e){}
+    R_UI();
+    isRemoteUpdate = false;
+  }
+});
+
 const F=id=>S.foods.find(f=>f.id==id);
 const avail=f=>!S.out[f.id]&&!(S.low&&f.h);
 const left=()=>{const[h,m]=S.cut.split(':');const c=new Date();c.setHours(+h,+m,0,0);return c-new Date()};
@@ -35,7 +86,6 @@ setInterval(tick,1000);
 
 const CD='bg-white rounded-3xl border border-black/[0.04] shadow-sm';
 const SEC='text-xs font-semibold uppercase tracking-wider text-slate-500 px-1 mb-2';
-const BL='#007AFF',GR='#34C759',OR='#FF9500';
 const badge={draft:['Still choosing','bg-slate-100 text-slate-500'],pending:['Waiting for Mom','bg-[#FF9500]/15 text-[#B36B00]'],approved:['Approved','bg-[#34C759]/15 text-[#1F8A3C]'],denied:['Needs changes','bg-[#FF3B30]/10 text-[#D70015]']};
 const st=l=>badge[l.st||'draft'];
 const pill=l=>`<span class="text-[11px] font-semibold px-2.5 py-1 rounded-full ${st(l)[1]}">${st(l)[0]}</span>`;
@@ -49,8 +99,8 @@ return `<div class="max-w-xl mx-auto px-4 pt-3 pb-3"><div class="flex items-cent
 <div id="cd" class="text-center text-xs font-semibold text-slate-500 mt-2.5"></div></div>`}
 
 function slots(l,den){return `<div class="grid grid-cols-2 gap-3 mb-4">${CATS.map(c=>{const f=l[c[0]]?F(l[c[0]]):null,bad=f&&den&&den[f.id],sel=S.cat==c[0]&&S.p!='Mom';
-return `<button ${S.p=='Mom'?'':`onclick="A.cat('${c[0]}')"`} class="text-left p-4 ${CD} ${bad?'ring-2 ring-[#FF3B30]':sel?'ring-2 ring-[#007AFF]':''}">
-<div class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">${c[2]} ${c[1]}</div>
+return `<button ${S.p=='Mom'?'':`onclick="A.cat('${c[0]}')"`} class="text-left p-4 ${CD}${bad?'ring-2 ring-[#FF3B30]':sel?'ring-2 ring-[#007AFF]':''}">
+<div class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">${c[2]}${c[1]}</div>
 <div class="mt-2 ${S.spin?'spin text-2xl':''}">${S.spin?'🎡':f?'<div class="text-2xl">'+f.e+'</div><div class="text-[15px] font-semibold tracking-tight mt-0.5">'+E(f.n)+'</div>':'<span class="text-[15px] text-slate-300">Tap to pick</span>'}</div>
 ${bad?`<div class="text-xs font-medium text-[#D70015] mt-1">${E(den[f.id])}</div>`:''}</button>`}).join('')}</div>`}
 
@@ -63,7 +113,7 @@ ${slots(l,l.den)}
 <div class="${SEC}">Pick a ${CATS.find(c=>c[0]==S.cat)[1]}</div>
 <div class="${CD} p-3 mb-6"><div class="flex justify-end mb-2"><button onclick="A.addf()" class="text-[15px] text-[#007AFF] font-medium px-1">＋ New item</button></div>
 <div class="grid grid-cols-2 gap-2">${items.map(f=>{const on=l[f.cat]==f.id,off=S.out[f.id];
-return `<button ${off?'disabled':`onclick="A.pick('${f.id}')"`} class="p-3 rounded-2xl text-left text-[14px] ${on?'bg-[#007AFF]/10 ring-2 ring-[#007AFF] font-semibold text-slate-900':off?'bg-slate-50 text-slate-300':'bg-slate-50 text-slate-800'}">${f.e} ${E(f.n)}${off?'<div class="text-xs">Out of stock</div>':''}${f.h?' <span class="text-xs text-slate-400">🔪</span>':''}</button>`}).join('')}</div></div>
+return `<button ${off?'disabled':`onclick="A.pick('${f.id}')"`} class="p-3 rounded-2xl text-left text-[14px] ${on?'bg-[#007AFF]/10 ring-2 ring-[#007AFF] font-semibold text-slate-900':off?'bg-slate-50 text-slate-300':'bg-slate-50 text-slate-800'}">${f.e}${E(f.n)}${off?'<div class="text-xs">Out of stock</div>':''}${f.h?' <span class="text-xs text-slate-400">🔪</span>':''}</button>`}).join('')}</div></div>
 <div class="${SEC}">Sibling peek</div>
 <div class="${CD} p-4"><div class="flex items-center justify-between mb-1.5"><h3 class="font-bold tracking-tight">👀 ${N(o)}'s lunch</h3>${pill(lo)}</div>
 <div class="text-sm text-slate-500">${CATS.map(c=>lo[c[0]]?F(lo[c[0]]).e+' '+E(F(lo[c[0]]).n):'').filter(Boolean).join(' · ')||'Nothing picked yet'}</div></div>`}
@@ -75,9 +125,9 @@ let body='';
 if(S.tab=='appr')body=['Abhi','Sister'].map(k=>{const l=S.L[k];
 return `<div class="${CD} p-4 mb-4"><div class="flex justify-between items-center mb-2"><h3 class="text-lg font-bold tracking-tight">${N(k)}</h3>${pill(l)}</div>
 ${full(l)?CATS.map(c=>{const f=F(l[c[0]]);if(!f)return'';const d=l.den&&l.den[f.id];
-return `<div class="flex items-center justify-between py-2 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e} ${E(f.n)} <span class="text-slate-400 text-xs">${c[1]}</span>${S.out[f.id]?' <span class="text-[#D70015] text-xs font-medium">Out of stock</span>':''}${d?` <span class="text-[#D70015] text-xs font-medium">${E(d)}</span>`:''}</span>
+return `<div class="flex items-center justify-between py-2 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e}${E(f.n)} <span class="text-slate-400 text-xs">${c[1]}</span>${S.out[f.id]?' <span class="text-[#D70015] text-xs font-medium">Out of stock</span>':''}${d?` <span class="text-[#D70015] text-xs font-medium">${E(d)}</span>`:''}</span>
 ${l.st=='pending'?`<button onclick="A.deny('${k}','${f.id}')" class="text-[#FF3B30] text-[13px] font-semibold bg-[#FF3B30]/10 rounded-full px-3 py-1">Deny</button>`:''}</div>`}).join('')+(l.st=='pending'?`<button onclick="A.ok('${k}')" class="w-full mt-3 py-3 rounded-2xl bg-[#34C759] text-white font-semibold shadow-md">Approve pack</button>`:''):'<div class="text-sm text-slate-400">Waiting for a full lunchbox.</div>'}</div>`}).join('')+`<div class="text-center"><button onclick="A.clr()" class="text-[13px] text-[#007AFF] font-medium">Clear today's lunches</button></div>`;
-if(S.tab=='pantry')body=`<div class="${CD} px-4 py-3 mb-4 flex items-center justify-between"><span class="text-[15px] font-medium">Close choices at</span><input type="time" value="${S.cut}" onchange="A.cut(this.value)" class="border border-black/10 rounded-xl px-3 py-1.5"></div>`+CATS.map(c=>`<div class="${SEC}">${c[2]} ${c[1]}</div><div class="${CD} px-4 mb-4">${S.foods.filter(f=>f.cat==c[0]).map(f=>`<div class="flex items-center justify-between py-2.5 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e} ${E(f.n)}${S.out[f.id]?' <span class="text-xs text-slate-400">Out</span>':''}</span>${sw(!S.out[f.id],`A.stock('${f.id}')`)}</div>`).join('')}</div>`).join('');
+if(S.tab=='pantry')body=`<div class="${CD} px-4 py-3 mb-4 flex items-center justify-between"><span class="text-[15px] font-medium">Close choices at</span><input type="time" value="${S.cut}" onchange="A.cut(this.value)" class="border border-black/10 rounded-xl px-3 py-1.5"></div>`+CATS.map(c=>`<div class="${SEC}">${c[2]} ${c[1]}</div><div class="${CD} px-4 mb-4">${S.foods.filter(f=>f.cat==c[0]).map(f=>`<div class="flex items-center justify-between py-2.5 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e}${E(f.n)}${S.out[f.id]?' <span class="text-xs text-slate-400">Out</span>':''}</span>${sw(!S.out[f.id],`A.stock('${f.id}')`)}</div>`).join('')}</div>`).join('');
 if(S.tab=='groc'){const cnt={};['Abhi','Sister'].forEach(k=>{const l=S.L[k];if(l.st=='approved')CATS.forEach(c=>{if(l[c[0]])cnt[l[c[0]]]=(cnt[l[c[0]]]||0)+1})});
 const ids=Object.keys(cnt).filter(i=>F(i)),need=ids.filter(i=>S.out[i]),have=ids.filter(i=>!S.out[i]);
 const row=(i,x)=>`<div class="flex justify-between py-2 border-t border-black/5 first:border-0 text-[15px]"><span>${F(i).e} ${E(F(i).n)}</span><span class="${x}">×${cnt[i]}</span></div>`;
@@ -96,9 +146,12 @@ else if(S.ren){t='Change Names';b=`<div class="${CD} p-3 grid gap-2 mb-3">${['Ab
 return t?`<div class="fixed inset-0 z-50"><div onclick="A.x()" class="fade absolute inset-0 bg-black/30"></div><div class="up absolute bottom-0 inset-x-0 max-w-xl mx-auto bg-[#F2F2F7] rounded-t-[28px] shadow-2xl px-4 pt-2" style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom,0px))"><button onclick="A.x()" class="block w-10 h-1.5 bg-slate-300 rounded-full mx-auto mb-3"></button>
 <div class="flex justify-between items-center mb-3"><h3 class="text-xl font-bold tracking-tight">${t}</h3><button onclick="A.x()" class="text-[#007AFF] font-medium">Cancel</button></div>${b}</div></div>`:''}
 
-function R(){document.getElementById('hd').innerHTML=head();document.getElementById('app').innerHTML=(S.low?'<div class="rounded-2xl bg-[#007AFF]/10 text-[#0058B8] text-sm font-medium px-4 py-3 mb-4">🌤️ Low-effort morning is on: prep-heavy foods are hidden.</div>':'')+(S.p=='Mom'?mom():kid());document.getElementById('sh').innerHTML=sheet();save();tick()}
+function R_UI(){document.getElementById('hd').innerHTML=head();document.getElementById('app').innerHTML=(S.low?'<div class="rounded-2xl bg-[#007AFF]/10 text-[#0058B8] text-sm font-medium px-4 py-3 mb-4">🌤️ Low-effort morning is on: prep-heavy foods are hidden.</div>':'')+(S.p=='Mom'?mom():kid());document.getElementById('sh').innerHTML=sheet();tick()}
+function R(){R_UI();save()}
+
 function NT(w,f){(S.notes=S.notes||[]).unshift({w:w,e:f.e,n:f.n,c:f.cat});S.notes=S.notes.slice(0,20);try{if('Notification' in window){const show=()=>new Notification('Lunchbox HQ',{body:S.names[w]+' added '+f.n});if(Notification.permission=='granted')show();else if(Notification.permission!='denied')Notification.requestPermission().then(p=>{if(p=='granted')show()})}}catch(e){}}
 function notesBox(){const n=S.notes||[];return n.length?`<div class="${CD} p-4 mb-4"><div class="flex items-center justify-between mb-1"><h3 class="font-bold tracking-tight">🔔 New items added</h3><button onclick="A.dis()" class="text-[#007AFF] text-[13px] font-medium">Clear</button></div>${n.map(x=>`<div class="text-[15px] py-1.5 border-t border-black/5 first:border-0">${x.e} <b>${E(x.n)}</b> <span class="text-slate-500">added by ${N(x.w)}</span></div>`).join('')}</div>`:''}
+
 const A={dis:()=>{S.notes=[];R()},
 p:n=>{S.p=n;S.dn=null;R()},ren:()=>{S.ren=!S.ren;R()},rename:()=>{['Abhi','Sister','Mom'].forEach(k=>{const v=document.getElementById('rn-'+k).value.trim();if(v)S.names[k]=v});S.ren=0;R();T('Names updated')},
 x:()=>{S.add=0;S.dn=null;S.ren=0;R()},
@@ -114,5 +167,6 @@ deny:(k,id)=>{S.dn={k,id};R()},why:r=>{const l=S.L[S.dn.k];l.den=l.den||{};l.den
 ok:k=>{S.L[k].st='approved';S.L[k].den={};R()},clr:()=>{S.L={Abhi:{},Sister:{}};R()},
 copy:()=>{const t=['Abhi','Sister'].flatMap(k=>S.L[k].st=='approved'?CATS.map(c=>S.L[k][c[0]]):[]).filter(i=>F(i)&&S.out[i]).map(i=>'• '+F(i).n);
 try{navigator.clipboard.writeText('Lunchbox shopping list\n'+[...new Set(t)].join('\n'));T('Copied!')}catch(e){T('Copy not available')}}};
+
 R();
 </script></body></html>
