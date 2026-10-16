@@ -38,18 +38,31 @@ const D=[['main','🌯','Paneer wrap',1],['main','🥪','Veg sandwich',0],['main
 const WHY=['Out of stock','Too sugary','Had it recently','Needs more veg','Too messy'];
 
 let S;
+function defaultState(){
+  return {p:'Abhi',foods:D.map((d,i)=>({id:'f'+i,cat:d[0],e:d[1],n:d[2],h:d[3]})),out:{},L:{Abhi:{},Sister:{}},low:false,cut:'20:00',tab:'appr',cat:'main',names:{Abhi:'Abhi',Sister:'Sister',Mom:'Mom'}};
+}
+
 try{S=JSON.parse(localStorage.getItem('lhq1'))}catch(e){}
-if(!S)S={p:'Abhi',foods:D.map((d,i)=>({id:'f'+i,cat:d[0],e:d[1],n:d[2],h:d[3]})),out:{},L:{Abhi:{},Sister:{}},low:false,cut:'20:00',tab:'appr',cat:'main'};
-S.names=S.names||{Abhi:'Abhi',Sister:'Sister',Mom:'Mom'};
+if(!S) S=defaultState();
+
+function sanitizeState(){
+  if(!S) S = defaultState();
+  if(!S.L) S.L = {Abhi:{}, Sister:{}};
+  if(!S.L.Abhi) S.L.Abhi = {};
+  if(!S.L.Sister) S.L.Sister = {};
+  if(!S.foods) S.foods = defaultState().foods;
+  if(!S.out) S.out = {};
+  if(!S.names) S.names = {Abhi:'Abhi',Sister:'Sister',Mom:'Mom'};
+}
+sanitizeState();
 
 const E=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const N=k=>E(S.names[k]||k);
 
-// Flag to prevent recursive save loops when updating from Firebase
 let isRemoteUpdate = false;
 
-// Save state to LocalStorage and push live to Firebase
 const save=()=>{
+  sanitizeState();
   try{localStorage.setItem('lhq1',JSON.stringify(S))}catch(e){}
   if(!isRemoteUpdate && db){
     db.ref('lunchboxState').set(S);
@@ -65,20 +78,22 @@ db.ref('lunchboxState').on('value', (snapshot) => {
     const currentTab = S ? S.tab : 'appr';
     const currentCat = S ? S.cat : 'main';
     S = remoteData;
-    // Preserve local UI active tab/profile state across syncs
+    sanitizeState();
     S.p = currentProfile;
     S.tab = currentTab;
     S.cat = currentCat;
     try{localStorage.setItem('lhq1',JSON.stringify(S))}catch(e){}
     R_UI();
     isRemoteUpdate = false;
+  } else {
+    save();
   }
 });
 
 const F=id=>S.foods.find(f=>f.id==id);
 const avail=f=>!S.out[f.id]&&!(S.low&&f.h);
-const left=()=>{const[h,m]=S.cut.split(':');const c=new Date();c.setHours(+h,+m,0,0);return c-new Date()};
-const fmtT=()=>{const[h,m]=S.cut.split(':');return new Date(2000,0,1,h,m).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
+const left=()=>{const[h,m]=(S.cut||'20:00').split(':');const c=new Date();c.setHours(+h,+m,0,0);return c-new Date()};
+const fmtT=()=>{const[h,m]=(S.cut||'20:00').split(':');return new Date(2000,0,1,h,m).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'})};
 function T(m){const t=document.getElementById('toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(T.t);T.t=setTimeout(()=>t.classList.add('hidden'),2200)}
 function tick(){const c=document.getElementById('cd');if(!c)return;const ms=left();if(ms<=0){c.innerHTML='🔒 Choices are closed for tonight';return}
 const s=ms/1e3|0,p=n=>String(n).padStart(2,'0');c.innerHTML='⏰ Closes at '+fmtT()+' · <span class="text-slate-900 font-bold tabular-nums">'+p(s/3600|0)+':'+p(s%3600/60|0)+':'+p(s%60)+'</span> left'}
@@ -87,9 +102,9 @@ setInterval(tick,1000);
 const CD='bg-white rounded-3xl border border-black/[0.04] shadow-sm';
 const SEC='text-xs font-semibold uppercase tracking-wider text-slate-500 px-1 mb-2';
 const badge={draft:['Still choosing','bg-slate-100 text-slate-500'],pending:['Waiting for Mom','bg-[#FF9500]/15 text-[#B36B00]'],approved:['Approved','bg-[#34C759]/15 text-[#1F8A3C]'],denied:['Needs changes','bg-[#FF3B30]/10 text-[#D70015]']};
-const st=l=>badge[l.st||'draft'];
+const st=l=>badge[(l&&l.st)||'draft'];
 const pill=l=>`<span class="text-[11px] font-semibold px-2.5 py-1 rounded-full ${st(l)[1]}">${st(l)[0]}</span>`;
-const full=l=>CATS.every(c=>l[c[0]]);
+const full=l=>CATS.every(c=>l&&l[c[0]]);
 const sw=(on,fn)=>`<button onclick="${fn}" class="w-[51px] h-[31px] shrink-0 rounded-full p-0.5 ${on?'bg-[#34C759]':'bg-slate-300'}"><div class="w-[27px] h-[27px] bg-white rounded-full shadow-md" style="transition:transform .2s ease-out;transform:translateX(${on?20:0}px)"></div></button>`;
 
 function head(){const P=['Abhi','Sister','Mom'],ic={Abhi:'🧒',Sister:'👧',Mom:'👩'};
@@ -98,55 +113,67 @@ return `<div class="max-w-xl mx-auto px-4 pt-3 pb-3"><div class="flex items-cent
 <div class="bg-slate-200/70 rounded-xl p-0.5 grid grid-cols-3 gap-0.5">${P.map(n=>`<button onclick="A.p('${n}')" class="py-1.5 rounded-[10px] text-[13px] font-semibold ${S.p==n?'bg-white text-slate-900 shadow':'text-slate-500'}">${ic[n]} ${N(n)}${n=='Mom'&&(S.notes||[]).length?` <span class="inline-block min-w-[18px] px-1 rounded-full bg-[#FF3B30] text-white text-[11px] leading-[18px]">${S.notes.length}</span>`:''}</button>`).join('')}</div>
 <div id="cd" class="text-center text-xs font-semibold text-slate-500 mt-2.5"></div></div>`}
 
-function slots(l,den){return `<div class="grid grid-cols-2 gap-3 mb-4">${CATS.map(c=>{const f=l[c[0]]?F(l[c[0]]):null,bad=f&&den&&den[f.id],sel=S.cat==c[0]&&S.p!='Mom';
+function slots(l,den){return `<div class="grid grid-cols-2 gap-3 mb-4">${CATS.map(c=>{const f=(l&&l[c[0]])?F(l[c[0]]):null,bad=f&&den&&den[f.id],sel=S.cat==c[0]&&S.p!='Mom';
 return `<button ${S.p=='Mom'?'':`onclick="A.cat('${c[0]}')"`} class="text-left p-4 ${CD}${bad?'ring-2 ring-[#FF3B30]':sel?'ring-2 ring-[#007AFF]':''}">
 <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-500">${c[2]}${c[1]}</div>
 <div class="mt-2 ${S.spin?'spin text-2xl':''}">${S.spin?'🎡':f?'<div class="text-2xl">'+f.e+'</div><div class="text-[15px] font-semibold tracking-tight mt-0.5">'+E(f.n)+'</div>':'<span class="text-[15px] text-slate-300">Tap to pick</span>'}</div>
 ${bad?`<div class="text-xs font-medium text-[#D70015] mt-1">${E(den[f.id])}</div>`:''}</button>`}).join('')}</div>`}
 
-function kid(){const n=S.p,l=S.L[n],o=n=='Abhi'?'Sister':'Abhi',lo=S.L[o];
-const items=S.foods.filter(f=>f.cat==S.cat&&!(S.low&&f.h));
-return `<div class="flex items-center justify-between mb-3 px-1"><h2 class="text-[22px] font-bold tracking-tight">${N(n)}'s lunchbox</h2>${pill(l)}</div>
-${slots(l,l.den)}
-<div class="grid grid-cols-2 gap-3 mb-6"><button onclick="A.surp()" class="py-3.5 rounded-2xl bg-[#FF9500] text-white font-semibold shadow-md">🎡 Surprise Me</button>
-<button onclick="A.sub()" class="py-3.5 rounded-2xl bg-[#007AFF] text-white font-semibold shadow-md">Send to Mom</button></div>
-<div class="${SEC}">Pick a ${CATS.find(c=>c[0]==S.cat)[1]}</div>
-<div class="${CD} p-3 mb-6"><div class="flex justify-end mb-2"><button onclick="A.addf()" class="text-[15px] text-[#007AFF] font-medium px-1">＋ New item</button></div>
-<div class="grid grid-cols-2 gap-2">${items.map(f=>{const on=l[f.cat]==f.id,off=S.out[f.id];
-return `<button ${off?'disabled':`onclick="A.pick('${f.id}')"`} class="p-3 rounded-2xl text-left text-[14px] ${on?'bg-[#007AFF]/10 ring-2 ring-[#007AFF] font-semibold text-slate-900':off?'bg-slate-50 text-slate-300':'bg-slate-50 text-slate-800'}">${f.e}${E(f.n)}${off?'<div class="text-xs">Out of stock</div>':''}${f.h?' <span class="text-xs text-slate-400">🔪</span>':''}</button>`}).join('')}</div></div>
-<div class="${SEC}">Sibling peek</div>
-<div class="${CD} p-4"><div class="flex items-center justify-between mb-1.5"><h3 class="font-bold tracking-tight">👀 ${N(o)}'s lunch</h3>${pill(lo)}</div>
-<div class="text-sm text-slate-500">${CATS.map(c=>lo[c[0]]?F(lo[c[0]]).e+' '+E(F(lo[c[0]]).n):'').filter(Boolean).join(' · ')||'Nothing picked yet'}</div></div>`}
+function kid(){
+  sanitizeState();
+  const n=S.p,l=S.L[n]||{},o=n=='Abhi'?'Sister':'Abhi',lo=S.L[o]||{};
+  const items=S.foods.filter(f=>f.cat==S.cat&&!(S.low&&f.h));
+  return `<div class="flex items-center justify-between mb-3 px-1"><h2 class="text-[22px] font-bold tracking-tight">${N(n)}'s lunchbox</h2>${pill(l)}</div>
+  ${slots(l,l.den)}
+  <div class="grid grid-cols-2 gap-3 mb-6"><button onclick="A.surp()" class="py-3.5 rounded-2xl bg-[#FF9500] text-white font-semibold shadow-md">🎡 Surprise Me</button>
+  <button onclick="A.sub()" class="py-3.5 rounded-2xl bg-[#007AFF] text-white font-semibold shadow-md">Send to Mom</button></div>
+  <div class="${SEC}">Pick a ${CATS.find(c=>c[0]==S.cat)[1]}</div>
+  <div class="${CD} p-3 mb-6"><div class="flex justify-end mb-2"><button onclick="A.addf()" class="text-[15px] text-[#007AFF] font-medium px-1">＋ New item</button></div>
+  <div class="grid grid-cols-2 gap-2">${items.map(f=>{const on=l[f.cat]==f.id,off=S.out[f.id];
+  return `<button ${off?'disabled':`onclick="A.pick('${f.id}')"`} class="p-3 rounded-2xl text-left text-[14px] ${on?'bg-[#007AFF]/10 ring-2 ring-[#007AFF] font-semibold text-slate-900':off?'bg-slate-50 text-slate-300':'bg-slate-50 text-slate-800'}">${f.e}${E(f.n)}${off?'<div class="text-xs">Out of stock</div>':''}${f.h?' <span class="text-xs text-slate-400">🔪</span>':''}</button>`}).join('')}</div></div>
+  <div class="${SEC}">Sibling peek</div>
+  <div class="${CD} p-4"><div class="flex items-center justify-between mb-1.5"><h3 class="font-bold tracking-tight">👀 ${N(o)}'s lunch</h3>${pill(lo)}</div>
+  <div class="text-sm text-slate-500">${CATS.map(c=>lo[c[0]]?F(lo[c[0]])?.e+' '+E(F(lo[c[0]])?.n):'').filter(Boolean).join(' · ')||'Nothing picked yet'}</div></div>`
+}
 
 function lowAlerts(){return CATS.map(c=>{const k=S.foods.filter(f=>f.cat==c[0]&&!S.out[f.id]).length;return k<=2?`<div class="rounded-2xl bg-[#FF3B30]/10 text-[#D70015] text-sm font-medium px-4 py-3 mb-3">Low stock: only ${k} ${c[1].toLowerCase()} option${k==1?'':'s'} left</div>`:''}).join('')}
 
-function mom(){const tabs=[['appr','Approve'],['pantry','Pantry'],['groc','Grocery']];
-let body='';
-if(S.tab=='appr')body=['Abhi','Sister'].map(k=>{const l=S.L[k];
-return `<div class="${CD} p-4 mb-4"><div class="flex justify-between items-center mb-2"><h3 class="text-lg font-bold tracking-tight">${N(k)}</h3>${pill(l)}</div>
-${full(l)?CATS.map(c=>{const f=F(l[c[0]]);if(!f)return'';const d=l.den&&l.den[f.id];
-return `<div class="flex items-center justify-between py-2 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e}${E(f.n)} <span class="text-slate-400 text-xs">${c[1]}</span>${S.out[f.id]?' <span class="text-[#D70015] text-xs font-medium">Out of stock</span>':''}${d?` <span class="text-[#D70015] text-xs font-medium">${E(d)}</span>`:''}</span>
-${l.st=='pending'?`<button onclick="A.deny('${k}','${f.id}')" class="text-[#FF3B30] text-[13px] font-semibold bg-[#FF3B30]/10 rounded-full px-3 py-1">Deny</button>`:''}</div>`}).join('')+(l.st=='pending'?`<button onclick="A.ok('${k}')" class="w-full mt-3 py-3 rounded-2xl bg-[#34C759] text-white font-semibold shadow-md">Approve pack</button>`:''):'<div class="text-sm text-slate-400">Waiting for a full lunchbox.</div>'}</div>`}).join('')+`<div class="text-center"><button onclick="A.clr()" class="text-[13px] text-[#007AFF] font-medium">Clear today's lunches</button></div>`;
-if(S.tab=='pantry')body=`<div class="${CD} px-4 py-3 mb-4 flex items-center justify-between"><span class="text-[15px] font-medium">Close choices at</span><input type="time" value="${S.cut}" onchange="A.cut(this.value)" class="border border-black/10 rounded-xl px-3 py-1.5"></div>`+CATS.map(c=>`<div class="${SEC}">${c[2]} ${c[1]}</div><div class="${CD} px-4 mb-4">${S.foods.filter(f=>f.cat==c[0]).map(f=>`<div class="flex items-center justify-between py-2.5 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e}${E(f.n)}${S.out[f.id]?' <span class="text-xs text-slate-400">Out</span>':''}</span>${sw(!S.out[f.id],`A.stock('${f.id}')`)}</div>`).join('')}</div>`).join('');
-if(S.tab=='groc'){const cnt={};['Abhi','Sister'].forEach(k=>{const l=S.L[k];if(l.st=='approved')CATS.forEach(c=>{if(l[c[0]])cnt[l[c[0]]]=(cnt[l[c[0]]]||0)+1})});
-const ids=Object.keys(cnt).filter(i=>F(i)),need=ids.filter(i=>S.out[i]),have=ids.filter(i=>!S.out[i]);
-const row=(i,x)=>`<div class="flex justify-between py-2 border-t border-black/5 first:border-0 text-[15px]"><span>${F(i).e} ${E(F(i).n)}</span><span class="${x}">×${cnt[i]}</span></div>`;
-body=ids.length?`<div class="${SEC}">To buy (out of stock)</div><div class="${CD} px-4 mb-4">${need.map(i=>row(i,'font-bold')).join('')||'<div class="text-sm text-slate-400 py-3">Nothing needed 🎉</div>'}</div>
-<div class="${SEC}">Already have</div><div class="${CD} px-4 mb-4">${have.map(i=>row(i,'text-slate-400')).join('')}</div><button onclick="A.copy()" class="w-full py-3.5 rounded-2xl bg-[#007AFF] text-white font-semibold shadow-md">Copy shopping list</button>`:`<div class="${CD} p-8 text-center text-slate-400">Approve a lunchbox to build the list.</div>`}
-return `${notesBox()}${lowAlerts()}<div class="${CD} px-4 py-3 mb-4 flex items-center justify-between"><div><div class="text-[15px] font-semibold">Low-effort morning</div><div class="text-xs text-slate-500">Hide prep-heavy foods</div></div>${sw(S.low,'A.low()')}</div>
-<div class="bg-slate-200/70 rounded-xl p-0.5 grid grid-cols-3 gap-0.5 mb-4">${tabs.map(t=>`<button onclick="A.tab('${t[0]}')" class="py-1.5 rounded-[10px] text-[13px] font-semibold ${S.tab==t[0]?'bg-white text-slate-900 shadow':'text-slate-500'}">${t[1]}</button>`).join('')}</div>${body}`}
+function mom(){
+  sanitizeState();
+  const tabs=[['appr','Approve'],['pantry','Pantry'],['groc','Grocery']];
+  let body='';
+  if(S.tab=='appr')body=['Abhi','Sister'].map(k=>{const l=S.L[k]||{};
+  return `<div class="${CD} p-4 mb-4"><div class="flex justify-between items-center mb-2"><h3 class="text-lg font-bold tracking-tight">${N(k)}</h3>${pill(l)}</div>
+  ${full(l)?CATS.map(c=>{const f=F(l[c[0]]);if(!f)return'';const d=l.den&&l.den[f.id];
+  return `<div class="flex items-center justify-between py-2 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e}${E(f.n)} <span class="text-slate-400 text-xs">${c[1]}</span>${S.out[f.id]?' <span class="text-[#D70015] text-xs font-medium">Out of stock</span>':''}${d?` <span class="text-[#D70015] text-xs font-medium">${E(d)}</span>`:''}</span>
+  ${l.st=='pending'?`<button onclick="A.deny('${k}','${f.id}')" class="text-[#FF3B30] text-[13px] font-semibold bg-[#FF3B30]/10 rounded-full px-3 py-1">Deny</button>`:''}</div>`}).join('')+(l.st=='pending'?`<button onclick="A.ok('${k}')" class="w-full mt-3 py-3 rounded-2xl bg-[#34C759] text-white font-semibold shadow-md">Approve pack</button>`:''):'<div class="text-sm text-slate-400">Waiting for a full lunchbox.</div>'}</div>`}).join('')+`<div class="text-center"><button onclick="A.clr()" class="text-[13px] text-[#007AFF] font-medium">Clear today's lunches</button></div>`;
+  if(S.tab=='pantry')body=`<div class="${CD} px-4 py-3 mb-4 flex items-center justify-between"><span class="text-[15px] font-medium">Close choices at</span><input type="time" value="${S.cut}" onchange="A.cut(this.value)" class="border border-black/10 rounded-xl px-3 py-1.5"></div>`+CATS.map(c=>`<div class="${SEC}">${c[2]} ${c[1]}</div><div class="${CD} px-4 mb-4">${S.foods.filter(f=>f.cat==c[0]).map(f=>`<div class="flex items-center justify-between py-2.5 border-t border-black/5 first:border-0 text-[15px]"><span>${f.e}${E(f.n)}${S.out[f.id]?' <span class="text-xs text-slate-400">Out</span>':''}</span>${sw(!S.out[f.id],`A.stock('${f.id}')`)}</div>`).join('')}</div>`).join('');
+  if(S.tab=='groc'){const cnt={};['Abhi','Sister'].forEach(k=>{const l=S.L[k]||{};if(l.st=='approved')CATS.forEach(c=>{if(l[c[0]])cnt[l[c[0]]]=(cnt[l[c[0]]]||0)+1})});
+  const ids=Object.keys(cnt).filter(i=>F(i)),need=ids.filter(i=>S.out[i]),have=ids.filter(i=>!S.out[i]);
+  const row=(i,x)=>`<div class="flex justify-between py-2 border-t border-black/5 first:border-0 text-[15px]"><span>${F(i).e} ${E(F(i).n)}</span><span class="${x}">×${cnt[i]}</span></div>`;
+  body=ids.length?`<div class="${SEC}">To buy (out of stock)</div><div class="${CD} px-4 mb-4">${need.map(i=>row(i,'font-bold')).join('')||'<div class="text-sm text-slate-400 py-3">Nothing needed 🎉</div>'}</div>
+  <div class="${SEC}">Already have</div><div class="${CD} px-4 mb-4">${have.map(i=>row(i,'text-slate-400')).join('')}</div><button onclick="A.copy()" class="w-full py-3.5 rounded-2xl bg-[#007AFF] text-white font-semibold shadow-md">Copy shopping list</button>`:`<div class="${CD} p-8 text-center text-slate-400">Approve a lunchbox to build the list.</div>`}
+  return `${notesBox()}${lowAlerts()}<div class="${CD} px-4 py-3 mb-4 flex items-center justify-between"><div><div class="text-[15px] font-semibold">Low-effort morning</div><div class="text-xs text-slate-500">Hide prep-heavy foods</div></div>${sw(S.low,'A.low()')}</div>
+  <div class="bg-slate-200/70 rounded-xl p-0.5 grid grid-cols-3 gap-0.5 mb-4">${tabs.map(t=>`<button onclick="A.tab('${t[0]}')" class="py-1.5 rounded-[10px] text-[13px] font-semibold ${S.tab==t[0]?'bg-white text-slate-900 shadow':'text-slate-500'}">${t[1]}</button>`).join('')}</div>${body}`
+}
 
 function sheet(){let t='',b='';
 if(S.add){t='New Item';b=`<div class="${CD} p-3 grid grid-cols-6 gap-2 mb-3"><input id="ne" maxlength="2" placeholder="🍽️" class="col-span-1 rounded-xl border border-black/10 px-2 py-2.5 text-center"><input id="nn" placeholder="Vegetarian food name" class="col-span-5 rounded-xl border border-black/10 px-3 py-2.5">
 <select id="nc" class="col-span-3 rounded-xl border border-black/10 px-3 py-2.5">${CATS.map(c=>`<option value="${c[0]}" ${c[0]==S.cat?'selected':''}>${c[1]}</option>`).join('')}</select>
 <label class="col-span-3 text-[15px] flex items-center gap-2 px-1"><input id="nh" type="checkbox" class="w-5 h-5 accent-[#007AFF]"> Needs prep</label></div>
 <button onclick="A.add()" class="w-full py-3.5 rounded-2xl bg-[#007AFF] text-white font-semibold shadow-md">Add vegetarian item</button>`}
-else if(S.dn){const f=F(S.dn.id);t='Deny '+E(f.n);b=`<div class="${SEC}">Quick reason</div><div class="${CD} px-4">${WHY.map(w=>`<button onclick="A.why('${w}')" class="w-full text-left py-3 border-t border-black/5 first:border-0 text-[16px] text-[#007AFF] font-medium">${w}</button>`).join('')}</div>`}
+else if(S.dn){const f=F(S.dn.id);t='Deny '+(f?E(f.n):'');b=`<div class="${SEC}">Quick reason</div><div class="${CD} px-4">${WHY.map(w=>`<button onclick="A.why('${w}')" class="w-full text-left py-3 border-t border-black/5 first:border-0 text-[16px] text-[#007AFF] font-medium">${w}</button>`).join('')}</div>`}
 else if(S.ren){t='Change Names';b=`<div class="${CD} p-3 grid gap-2 mb-3">${['Abhi','Sister','Mom'].map(k=>`<input id="rn-${k}" maxlength="14" value="${E(S.names[k])}" class="rounded-xl border border-black/10 px-3 py-2.5">`).join('')}</div><button onclick="A.rename()" class="w-full py-3.5 rounded-2xl bg-[#007AFF] text-white font-semibold shadow-md">Save names</button>`}
 return t?`<div class="fixed inset-0 z-50"><div onclick="A.x()" class="fade absolute inset-0 bg-black/30"></div><div class="up absolute bottom-0 inset-x-0 max-w-xl mx-auto bg-[#F2F2F7] rounded-t-[28px] shadow-2xl px-4 pt-2" style="padding-bottom:calc(1.25rem + env(safe-area-inset-bottom,0px))"><button onclick="A.x()" class="block w-10 h-1.5 bg-slate-300 rounded-full mx-auto mb-3"></button>
 <div class="flex justify-between items-center mb-3"><h3 class="text-xl font-bold tracking-tight">${t}</h3><button onclick="A.x()" class="text-[#007AFF] font-medium">Cancel</button></div>${b}</div></div>`:''}
 
-function R_UI(){document.getElementById('hd').innerHTML=head();document.getElementById('app').innerHTML=(S.low?'<div class="rounded-2xl bg-[#007AFF]/10 text-[#0058B8] text-sm font-medium px-4 py-3 mb-4">🌤️ Low-effort morning is on: prep-heavy foods are hidden.</div>':'')+(S.p=='Mom'?mom():kid());document.getElementById('sh').innerHTML=sheet();tick()}
+function R_UI(){
+  sanitizeState();
+  document.getElementById('hd').innerHTML=head();
+  document.getElementById('app').innerHTML=(S.low?'<div class="rounded-2xl bg-[#007AFF]/10 text-[#0058B8] text-sm font-medium px-4 py-3 mb-4">🌤️ Low-effort morning is on: prep-heavy foods are hidden.</div>':'')+(S.p=='Mom'?mom():kid());
+  document.getElementById('sh').innerHTML=sheet();
+  tick();
+}
 function R(){R_UI();save()}
 
 function NT(w,f){(S.notes=S.notes||[]).unshift({w:w,e:f.e,n:f.n,c:f.cat});S.notes=S.notes.slice(0,20);try{if('Notification' in window){const show=()=>new Notification('Lunchbox HQ',{body:S.names[w]+' added '+f.n});if(Notification.permission=='granted')show();else if(Notification.permission!='denied')Notification.requestPermission().then(p=>{if(p=='granted')show()})}}catch(e){}}
@@ -157,16 +184,16 @@ p:n=>{S.p=n;S.dn=null;R()},ren:()=>{S.ren=!S.ren;R()},rename:()=>{['Abhi','Siste
 x:()=>{S.add=0;S.dn=null;S.ren=0;R()},
 cat:c=>{S.cat=c;R()},tab:t=>{S.tab=t;S.dn=null;R()},addf:()=>{S.add=!S.add;R()},
 low:()=>{S.low=!S.low;R()},stock:id=>{S.out[id]=!S.out[id];R()},cut:v=>{if(v){S.cut=v;R()}},
-pick:id=>{if(left()<=0)return T('Choices are closed. Ask Mom!');const f=F(id),l=S.L[S.p];if(l.den&&l[f.cat])delete l.den[l[f.cat]];l[f.cat]=id;l.st='draft';R()},
-sub:()=>{const l=S.L[S.p];if(left()<=0)return T('Choices are closed. Ask Mom!');if(!full(l))return T('Fill all 4 slots first 🍱');
+pick:id=>{if(left()<=0)return T('Choices are closed. Ask Mom!');const f=F(id);let l=S.L[S.p];if(!l){S.L[S.p]={};l=S.L[S.p];}if(l.den&&l[f.cat])delete l.den[l[f.cat]];l[f.cat]=id;l.st='draft';R()},
+sub:()=>{const l=S.L[S.p]||{};if(left()<=0)return T('Choices are closed. Ask Mom!');if(!full(l))return T('Fill all 4 slots first 🍱');
 if(CATS.some(c=>l.den&&l.den[l[c[0]]]))return T('Swap the denied items first');l.den={};l.st='pending';R();T('Sent to Mom! 📦')},
-surp:()=>{if(left()<=0)return T('Choices are closed. Ask Mom!');const l=S.L[S.p];S.spin=1;R();setTimeout(()=>{CATS.forEach(c=>{const o=S.foods.filter(f=>f.cat==c[0]&&avail(f));if(o.length)l[c[0]]=o[Math.random()*o.length|0].id});l.st='draft';l.den={};S.spin=0;R();T('Surprise lunch ready! 🎉')},1000)},
+surp:()=>{if(left()<=0)return T('Choices are closed. Ask Mom!');let l=S.L[S.p];if(!l){S.L[S.p]={};l=S.L[S.p];}S.spin=1;R();setTimeout(()=>{CATS.forEach(c=>{const o=S.foods.filter(f=>f.cat==c[0]&&avail(f));if(o.length)l[c[0]]=o[Math.random()*o.length|0].id});l.st='draft';l.den={};S.spin=0;R();T('Surprise lunch ready! 🎉')},1000)},
 add:()=>{const n=document.getElementById('nn').value.trim();if(!n)return T('Give it a name');const c=document.getElementById('nc').value;
 S.foods.push({id:'c'+Date.now(),cat:c,e:document.getElementById('ne').value||'🍽️',n:n,h:document.getElementById('nh').checked?1:0,custom:1});S.cat=c;S.add=0;if(S.p!='Mom')NT(S.p,S.foods[S.foods.length-1]);R();T(S.p=='Mom'?'Added! 🌱':'Added! Mom was notified 🔔')},
-deny:(k,id)=>{S.dn={k,id};R()},why:r=>{const l=S.L[S.dn.k];l.den=l.den||{};l.den[S.dn.id]=r;l.st='denied';S.dn=null;R()},
-ok:k=>{S.L[k].st='approved';S.L[k].den={};R()},clr:()=>{S.L={Abhi:{},Sister:{}};R()},
-copy:()=>{const t=['Abhi','Sister'].flatMap(k=>S.L[k].st=='approved'?CATS.map(c=>S.L[k][c[0]]):[]).filter(i=>F(i)&&S.out[i]).map(i=>'• '+F(i).n);
+deny:(k,id)=>{S.dn={k,id};R()},why:r=>{const l=S.L[S.dn.k]||{};l.den=l.den||{};l.den[S.dn.id]=r;l.st='denied';S.dn=null;R()},
+ok:k=>{if(S.L[k]){S.L[k].st='approved';S.L[k].den={};}R()},clr:()=>{S.L={Abhi:{},Sister:{}};R()},
+copy:()=>{const t=['Abhi','Sister'].flatMap(k=>(S.L[k]&&S.L[k].st=='approved')?CATS.map(c=>S.L[k][c[0]]):[]).filter(i=>F(i)&&S.out[i]).map(i=>'• '+F(i).n);
 try{navigator.clipboard.writeText('Lunchbox shopping list\n'+[...new Set(t)].join('\n'));T('Copied!')}catch(e){T('Copy not available')}}};
 
-R();
+R_UI();
 </script></body></html>
