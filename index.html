@@ -30,8 +30,8 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
-const CATS=[['main','Main','🍱'],['side','Side','🥒'],['snack','Snack','🍎'],['drink','Drink','🥤']];
-// EMPTY DEFAULT FOOD LIST - START FRESH
+// RENAMED: Main -> 1st Box, Side -> 2nd Box
+const CATS=[['main','1st Box','🍱'],['side','2nd Box','🥒'],['snack','Snack','🍎'],['drink','Drink','🥤']];
 const D=[];
 const WHY=['Out of stock','Too sugary','Had it recently','Needs more veg','Too messy'];
 
